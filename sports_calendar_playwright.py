@@ -1,6 +1,6 @@
+from playwright.sync_api import sync_playwright
 import json
 import time
-from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://www.thesportsdb.com/browse_tv/?c=united_kingdom"
 OUTPUT_FILE = "uk_tv_shows.json"
@@ -11,16 +11,16 @@ def scrape_shows():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(BASE_URL)
-        page.wait_for_load_state("networkidle")  # wait until page fully loads
+        
+        # Wait until at least one show card appears
+        page.wait_for_selector("div.col-lg-3", timeout=15000)
+        time.sleep(2)  # small buffer to ensure all JS loads
 
-        # Get all show cards
         show_cards = page.query_selector_all("div.col-lg-3")
         for card in show_cards:
-            # Title is inside <h5>
             h5 = card.query_selector("h5")
             title = h5.inner_text().strip() if h5 else None
 
-            # Link is inside <a>
             a_tag = card.query_selector("a")
             link = a_tag.get_attribute("href") if a_tag else None
             if link and not link.startswith("http"):
@@ -28,13 +28,12 @@ def scrape_shows():
 
             broadcast_time = None
             if link:
-                # Visit detail page to get broadcast time
                 try:
                     page.goto(link)
-                    page.wait_for_load_state("networkidle")
+                    page.wait_for_selector("span.text-success", timeout=5000)
                     span = page.query_selector("span.text-success")
                     broadcast_time = span.inner_text().strip() if span else None
-                    time.sleep(0.5)  # polite delay
+                    time.sleep(0.5)
                 except Exception:
                     broadcast_time = None
 
