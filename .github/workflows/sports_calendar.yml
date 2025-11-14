@@ -25,7 +25,7 @@ jobs:
       run: pip install requests beautifulsoup4
 
     - name: Run scraper
-      run: python sports_calendar.py
+      run: python sports_calendar_playwright.py
 
     - name: Commit JSON
       run: |
