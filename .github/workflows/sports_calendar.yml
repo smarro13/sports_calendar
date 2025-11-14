@@ -26,8 +26,12 @@ jobs:
       - name: Run scraper
         run: python sports_calendar_playwright.py
 
-      - name: Upload JSON artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: uk_tv_shows
-          path: uk_tv_shows.json
+      - name: Commit JSON to /docs
+        run: |
+          git config user.name "smarro13"
+          git config user.email "ste_43@hotmail.co.uk"
+          mkdir -p docs
+          mv uk_tv_shows.json docs/uk_tv_shows.json
+          git add docs/uk_tv_shows.json
+          git commit -m "Update TV shows JSON [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:main
