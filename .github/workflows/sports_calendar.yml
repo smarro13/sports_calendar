@@ -2,8 +2,11 @@ name: Daily Sports Scraper
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # daily at midnight UTC
+    - cron: '0 0 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write  # give workflow permission to push
 
 jobs:
   scrape:
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -28,8 +33,8 @@ jobs:
 
       - name: Commit JSON to /docs
         run: |
-          git config user.name "smarro13"
-          git config user.email "ste_43@hotmail.co.uk"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           mkdir -p docs
           mv uk_tv_shows.json docs/uk_tv_shows.json
           git add docs/uk_tv_shows.json
