@@ -2,7 +2,7 @@ name: Daily UK Sports Scraper
 
 on:
   schedule:
-    - cron: "0 */4 * * *"   # runs every 4 hours
+    - cron: "0 */4 * * *"
   workflow_dispatch:
 
 jobs:
@@ -21,34 +21,16 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Install Playwright + system deps
-      run: |
-        pip install playwright
-        playwright install chromium
-        sudo apt-get update
-        sudo apt-get install -y \
-          libnss3 \
-          libnspr4 \
-          libatk1.0-0 \
-          libatk-bridge2.0-0 \
-          libcups2 \
-          libdrm2 \
-          libxkbcommon0 \
-          libxcomposite1 \
-          libxdamage1 \
-          libxfixes3 \
-          libxrandr2 \
-          libgbm1 \
-          libxshmfence1 \
-          libasound2t64
+    - name: Install dependencies
+      run: pip install requests beautifulsoup4
 
     - name: Run scraper
-      run: python sports_calendar_playwright.py
+      run: python sports_calendar.py
 
-    - name: Commit updated JSON
+    - name: Commit JSON
       run: |
         git config user.name "github-actions"
         git config user.email "github-actions@github.com"
-        git add docs/wtm_tv_sports_today.json
-        git commit -m "Update WTM sports file" || echo "No changes to commit"
+        git add docs/uk_tv_sports_today.json
+        git commit -m "Update sports file" || echo "No changes"
         git push
