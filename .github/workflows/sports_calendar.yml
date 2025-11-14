@@ -28,15 +28,16 @@ jobs:
           pip install playwright
           playwright install
 
-      - name: Run scraper
-        run: python sports_calendar_playwright.py
-
       - name: Commit JSON to /docs
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           mkdir -p docs
           mv uk_tv_shows.json docs/uk_tv_shows.json
-          git add docs/uk_tv_shows.json
+          touch docs/.nojekyll
+          git add docs/uk_tv_shows.json docs/.nojekyll
           git commit -m "Update TV shows JSON [skip ci]" || echo "No changes to commit"
           git push origin HEAD:main
+      
+                git commit -m "Update TV shows JSON [skip ci]" || echo "No changes to commit"
+                git push origin HEAD:main
