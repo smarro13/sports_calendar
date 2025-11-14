@@ -1,79 +1,77 @@
-from playwright.sync_api import sync_playwright
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 import json
-import time
 
-URL = "https://www.wheresthematch.com/tv-guide/"
-OUTPUT_FILE = "wtm_tv_sports_today.json"
+URL = "https://tv24.co.uk/sport"
+OUTPUT_FILE = "docs/uk_tv_sports_today.json"
 
-def scrape_wtm():
-    results = []
-    # Format today's date how WTM shows it (inspect site to confirm)
-    today = datetime.now().strftime("%A %d %B")  # e.g., 'Friday 14 November'
+ALLOWED_CHANNEL_KEYWORDS = [
+    "Sky Sports",
+    "TNT Sports",
+    "BBC",
+    "ITV"
+]
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            viewport={ "width": 1920, "height": 1080 },
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        page.goto(URL)
-        page.wait_for_load_state("load", timeout=60000)
-        time.sleep(5)  # wait for JS
+def fetch_sports():
+    print("Fetching:", URL)
+    response = requests.get(URL, headers={
+        "User-Agent": "Mozilla/5.0"
+    })
 
-        # Wait for schedule‐item elements (you’ll need to confirm the selector by inspecting WTM)
-        try:
-            page.wait_for_selector("div.schedule-item", timeout=60000)
-        except Exception as e:
-            print("Timed out waiting for schedule items:", e)
-            page.screenshot(path="wtm_debug.png", full_page=True)
-            browser.close()
-            return results
+    if response.status_code != 200:
+        print("Failed to fetch page:", response.status_code)
+        return []
 
-        rows = page.query_selector_all("div.schedule-item")
-        for row in rows:
-            # Date
-            date_el = row.query_selector("span.schedule-date")
-            date_text = date_el.inner_text().strip() if date_el else today
-            if today not in date_text:
-                continue
+    soup = BeautifulSoup(response.text, "html.parser")
+    events = []
 
-            # Sport name
-            sport_el = row.query_selector("span.schedule-sport")
-            sport = sport_el.inner_text().strip() if sport_el else "Unknown"
+    cards = soup.select("div.listing")  # event card container
 
-            # Title / Event
-            title_el = row.query_selector("span.schedule-event")
-            time_el = row.query_selector("span.schedule-time")
-            channel_el = row.query_selector("span.schedule-channel")
+    for card in cards:
+        # title
+        title_el = card.select_one("h3")
+        if not title_el:
+            continue
+        title = title_el.get_text(strip=True)
 
-            if title_el and time_el and channel_el:
-                channel = channel_el.inner_text().strip()
-                # Filter for Sky / TNT if needed
-                if "Sky Sports" not in channel and "TNT Sports" not in channel:
-                    continue
+        # sport type (football, rugby, etc.)
+        sport_el = card.select_one(".category")
+        sport = sport_el.get_text(strip=True) if sport_el else "Sport"
 
-                results.append({
-                    "date": date_text,
-                    "sport": sport,
-                    "title": title_el.inner_text().strip(),
-                    "time": time_el.inner_text().strip(),
-                    "channel": channel
-                })
+        # time
+        time_el = card.select_one(".time")
+        if not time_el:
+            continue
+        time = time_el.get_text(strip=True)
 
-        if not results:
-            page.screenshot(path="wtm_debug.png", full_page=True)
+        # channel name
+        channel_el = card.select_one(".channel")
+        if not channel_el:
+            continue
+        channel = channel_el.get_text(strip=True)
 
-        browser.close()
+        # filter
+        if not any(key.lower() in channel.lower() for key in ALLOWED_CHANNEL_KEYWORDS):
+            continue
 
-    return results
+        events.append({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "sport": sport,
+            "title": title,
+            "time": time,
+            "channel": channel
+        })
+
+    return events
 
 
 def main():
-    events = scrape_wtm()
+    events = fetch_sports()
+
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(events, f, indent=4, ensure_ascii=False)
+
     print(f"Saved {len(events)} events to {OUTPUT_FILE}")
 
 
