@@ -20,25 +20,28 @@ def scrape_wtm():
         )
         page = context.new_page()
         page.goto(URL)
-        page.wait_for_load_state("networkidle")
-        time.sleep(5)  # allow JS to render
 
-        # Wait for live schedule table
+        # Wait for initial HTML load
+        page.wait_for_load_state("load", timeout=60000)
+        time.sleep(5)  # allow JS to render schedule
+
+        # Wait for at least one schedule item
         try:
-            page.wait_for_selector("div.schedule-item", timeout=30000)
+            page.wait_for_selector("div.schedule-item", timeout=60000)
         except:
             print("Timed out waiting for schedule. Saving debug screenshot.")
             page.screenshot(path="wtm_debug.png", full_page=True)
             browser.close()
             return results
 
+        # Scrape all schedule items
         rows = page.query_selector_all("div.schedule-item")
 
         for row in rows:
             date_el = row.query_selector("span.schedule-date")
             date_text = date_el.inner_text().strip() if date_el else today
             if today not in date_text:
-                continue
+                continue  # only today
 
             sport_el = row.query_selector("span.schedule-sport")
             sport = sport_el.inner_text().strip() if sport_el else "Unknown"
@@ -49,7 +52,7 @@ def scrape_wtm():
 
             if title_el and time_el and channel_el:
                 channel = channel_el.inner_text().strip()
-                # Filter for Sky/TNT only if needed
+                # Only include Sky Sports / TNT Sports
                 if "Sky Sports" not in channel and "TNT Sports" not in channel:
                     continue
 
@@ -61,7 +64,7 @@ def scrape_wtm():
                     "channel": channel
                 })
 
-        # Save debug screenshot if no results
+        # Save debug screenshot if nothing found
         if not results:
             page.screenshot(path="wtm_debug.png", full_page=True)
 
