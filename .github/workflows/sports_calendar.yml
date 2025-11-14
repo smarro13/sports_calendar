@@ -3,17 +3,17 @@ name: Daily UK Sports Scraper
 on:
   schedule:
     - cron: "0 */4 * * *"   # runs every 4 hours
-  workflow_dispatch:        # manual run button
+  workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write      # allow committing JSON file
+      contents: write
 
     steps:
-    - name: Checkout repo
+    - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Setup Python
@@ -21,17 +21,31 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Install Playwright + deps
+    - name: Install Playwright + system deps
       run: |
         pip install playwright
         playwright install chromium
         sudo apt-get update
-        sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+        sudo apt-get install -y \
+          libnss3 \
+          libnspr4 \
+          libatk1.0-0 \
+          libatk-bridge2.0-0 \
+          libcups2 \
+          libdrm2 \
+          libxkbcommon0 \
+          libxcomposite1 \
+          libxdamage1 \
+          libxfixes3 \
+          libxrandr2 \
+          libgbm1 \
+          libxshmfence1 \
+          libasound2t64
 
     - name: Run scraper
       run: python sports_calendar_playwright.py
 
-    - name: Commit JSON
+    - name: Commit updated JSON
       run: |
         git config user.name "github-actions"
         git config user.email "github-actions@github.com"
