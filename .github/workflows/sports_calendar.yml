@@ -2,7 +2,8 @@ name: Daily UK Sports Scraper
 
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    # Runs every day at 08:00 UTC (adjust as needed)
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,24 +14,25 @@ jobs:
       contents: write
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: pip install requests beautifulsoup4
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
 
-    - name: Run scraper
-      run: python sports_calendar_playwright.py
+      - name: Run sports scraper
+        run: python sports_calendar_playwright.py
 
-    - name: Commit JSON
-      run: |
-        git config user.name "github-actions"
-        git config user.email "github-actions@github.com"
-        git add docs/uk_tv_sports_today.json
-        git commit -m "Update sports file" || echo "No changes"
-        git push
+      - name: Commit JSON
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add docs/uk_tv_sports_today.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update sports JSON"
+          git push
