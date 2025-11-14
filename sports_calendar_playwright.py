@@ -1,68 +1,71 @@
 from playwright.sync_api import sync_playwright
 import json
 import time
+from datetime import datetime
 
-BASE_URL = "https://www.thesportsdb.com/browse_tv/?c=united_kingdom"
-OUTPUT_FILE = "uk_tv_shows.json"
+URL = "https://www.skysports.com/watch/sport-on-sky"
+OUTPUT_FILE = "sky_sports_today.json"
 
-def scrape_shows():
+def scrape_sky_sports():
     results = []
+
     with sync_playwright() as p:
-        # Launch Chromium in headless mode
         browser = p.chromium.launch(headless=True)
-        # Set a common user-agent to reduce bot detection
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) "
                        "Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.goto(BASE_URL)
-        # Wait for network to be idle (all JS loaded)
+        page.goto(URL)
         page.wait_for_load_state("networkidle", timeout=20000)
-        time.sleep(3)  # small buffer for rendering
+        time.sleep(3)  # allow JS content to load
 
-        # Select all show cards
-        page.wait_for_selector("div.card", timeout=20000)
-        show_cards = page.query_selector_all("div.card")
-        for card in show_cards:
-            # Title
-            h5 = card.query_selector("h5")
-            title = h5.inner_text().strip() if h5 else None
+        # Grab all date headings
+        date_headers = page.query_selector_all("h2")
+        for date_h in date_headers:
+            date_text = date_h.inner_text().strip()
 
-            # Link
-            a_tag = card.query_selector("a")
-            link = a_tag.get_attribute("href") if a_tag else None
-            if link and not link.startswith("http"):
-                link = "https://www.thesportsdb.com" + link
+            # Only scrape today's date
+            today_str = datetime.now().strftime("%a %d %B")  # e.g., 'Fri 14 November'
+            if today_str not in date_text:
+                continue
 
-            # Broadcast time
-            broadcast_time = None
-            if link:
-                try:
-                    page.goto(link)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    time.sleep(1)
-                    span = page.query_selector("span.text-success")
-                    broadcast_time = span.inner_text().strip() if span else None
-                except Exception:
-                    broadcast_time = None
-
-            if title and link:
-                results.append({
-                    "title": title,
-                    "link": link,
-                    "broadcast_time": broadcast_time
-                })
+            # Get next sibling elements until next h2 (next date)
+            sibling = date_h.next_sibling
+            while sibling:
+                tag_name = sibling.evaluate("el => el.tagName")
+                if tag_name == "H2":
+                    break  # next date reached
+                # Sport section
+                if tag_name in ["H3", "H4"]:
+                    sport_name = sibling.inner_text().strip()
+                    # Events under this sport
+                    ul = sibling.next_sibling
+                    if ul:
+                        lis = ul.query_selector_all("li")
+                        for li in lis:
+                            title_el = li.query_selector("span.event-title")
+                            time_el = li.query_selector("span.event-time")
+                            channel_el = li.query_selector("span.event-channel")
+                            if title_el and time_el and channel_el:
+                                results.append({
+                                    "date": date_text,
+                                    "sport": sport_name,
+                                    "title": title_el.inner_text().strip(),
+                                    "time": time_el.inner_text().strip(),
+                                    "channel": channel_el.inner_text().strip()
+                                })
+                sibling = sibling.next_sibling
 
         browser.close()
     return results
 
 def main():
-    shows = scrape_shows()
+    events = scrape_sky_sports()
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(shows, f, indent=4, ensure_ascii=False)
-    print(f"Saved {len(shows)} shows to {OUTPUT_FILE}")
+        json.dump(events, f, indent=4, ensure_ascii=False)
+    print(f"Saved {len(events)} events to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
