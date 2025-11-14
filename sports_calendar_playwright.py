@@ -9,9 +9,11 @@ ALLOWED_CHANNELS = ["Sky Sports", "TNT Sports", "BBC", "ITV"]
 def fetch_live_football():
     url = "https://www.live-footballontv.com/tv-guide-uk/"
     events = []
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if r.status_code != 200:
-        print("Live Football on TV fetch failed")
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        print("[WARNING] Live Football on TV skipped:", e)
         return events
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -37,9 +39,11 @@ def fetch_live_football():
 def fetch_radiotimes():
     url = "https://www.radiotimes.com/tv/tv-guide/"
     events = []
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if r.status_code != 200:
-        print("RadioTimes fetch failed")
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        print("[WARNING] RadioTimes skipped:", e)
         return events
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -63,41 +67,14 @@ def fetch_radiotimes():
         })
     return events
 
-def fetch_sportstream():
-    url = "https://www.sportstream.co.uk/tv-schedule/"
-    events = []
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if r.status_code != 200:
-        print("SportStream fetch failed")
-        return events
-
-    soup = BeautifulSoup(r.text, "html.parser")
-    rows = soup.select("div.schedule-item")
-    for row in rows:
-        title_el = row.select_one(".event-title")
-        time_el = row.select_one(".event-time")
-        channel_el = row.select_one(".event-channel")
-        sport_el = row.select_one(".event-category")
-        if not (title_el and time_el and channel_el):
-            continue
-        channel = channel_el.get_text(strip=True)
-        if not any(c.lower() in channel.lower() for c in ALLOWED_CHANNELS):
-            continue
-        events.append({
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "sport": sport_el.get_text(strip=True) if sport_el else "Sport",
-            "title": title_el.get_text(strip=True),
-            "time": time_el.get_text(strip=True),
-            "channel": channel
-        })
-    return events
-
 def fetch_bbc_sport():
     url = "https://www.bbc.co.uk/sport/tv-radio-guide"
     events = []
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if r.status_code != 200:
-        print("BBC Sport fetch failed")
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        print("[WARNING] BBC Sport skipped:", e)
         return events
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -125,7 +102,6 @@ def main():
     all_events = []
     all_events.extend(fetch_live_football())
     all_events.extend(fetch_radiotimes())
-    all_events.extend(fetch_sportstream())
     all_events.extend(fetch_bbc_sport())
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
