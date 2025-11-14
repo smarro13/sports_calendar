@@ -8,25 +8,35 @@ OUTPUT_FILE = "sky_sports_today.json"
 
 def scrape_sky_sports():
     results = []
-
     today = datetime.now().strftime("%a %d %B")  # e.g., 'Fri 14 November'
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) "
                        "Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
         page.goto(URL)
-        page.wait_for_load_state("networkidle", timeout=30000)
-        time.sleep(5)  # allow JS to fully render timetable
+        page.wait_for_load_state("networkidle", timeout=60000)
+        time.sleep(5)  # allow JS to render
 
-        # Wait for main timetable container
-        page.wait_for_selector("div.sdc-site-timetable__list", timeout=30000)
+        # Scroll to trigger lazy loading
+        page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
+        time.sleep(2)
 
-        # Get all timetable sections (sport headings + events)
+        # Wait for at least one timetable item
+        try:
+            page.wait_for_selector("div.timetable-item", timeout=60000)
+        except:
+            print("Timed out waiting for timetable items. Saving screenshot for debugging.")
+            page.screenshot(path="sky_debug.png", full_page=True)
+            browser.close()
+            return results
+
+        # Get timetable sections (sport headings)
         sections = page.query_selector_all("div.sdc-site-timetable__list > div.sdc-site-timetable__section")
 
         for section in sections:
@@ -34,15 +44,14 @@ def scrape_sky_sports():
             sport_el = section.query_selector("h3, h4")
             sport_name = sport_el.inner_text().strip() if sport_el else "Unknown"
 
-            # Timetable items under this sport
+            # Events in this section
             items = section.query_selector_all("div.timetable-item")
             for item in items:
-                # Extract date if present
                 date_el = item.query_selector("span.timetable-event-date")
                 date_text = date_el.inner_text().strip() if date_el else today
 
                 if today not in date_text:
-                    continue  # skip other days
+                    continue
 
                 title_el = item.query_selector("span.timetable-event-title")
                 time_el = item.query_selector("span.timetable-event-time")
@@ -56,6 +65,10 @@ def scrape_sky_sports():
                         "time": time_el.inner_text().strip(),
                         "channel": channel_el.inner_text().strip()
                     })
+
+        # Save screenshot for debugging
+        if not results:
+            page.screenshot(path="sky_debug.png", full_page=True)
 
         browser.close()
     return results
