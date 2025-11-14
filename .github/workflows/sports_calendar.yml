@@ -30,7 +30,7 @@ jobs:
           playwright install
 
       - name: Run Sky Sports scraper
-        run: python sky_sports_scraper.py
+        run: python sports_calendar_playwright.py
 
       - name: Commit JSON to /docs
         run: |
