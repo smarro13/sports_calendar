@@ -3,112 +3,135 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import json
 
-URL = "https://www.tv24.co.uk/sports"
 OUTPUT_FILE = "docs/uk_tv_sports_today.json"
+ALLOWED_CHANNELS = ["Sky Sports", "TNT Sports", "BBC", "ITV"]
 
-ALLOWED_CHANNEL_KEYWORDS = [
-    "Sky Sports", "TNT Sports", "BBC", "ITV"
-]
-
-def debug_print(msg):
-    print(f"[DEBUG] {msg}")
-
-def fetch_events():
-    debug_print(f"Fetching: {URL}")
-    resp = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"})
-
-    debug_print(f"Status code: {resp.status_code}")
-    if resp.status_code != 200:
-        return []
-
-    # Save raw HTML for inspection
-    with open("debug_tv24.html", "w", encoding="utf-8") as f:
-        f.write(resp.text)
-    debug_print("Saved HTML → debug_tv24.html")
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    today = datetime.now().strftime("%A %d %B %Y")
-
-    # Debug: try several possible selectors
-    possible_selectors = [
-        "ul.listings-list > li",
-        "li.listings-item",
-        "div.listings-item",
-        "article",
-        "div.programme",
-        "div.schedule-item"
-    ]
-
-    listings = []
-    for sel in possible_selectors:
-        found = soup.select(sel)
-        debug_print(f"Selector '{sel}' matched {len(found)} elements")
-        if len(found) > 0:
-            listings = found
-            debug_print(f"Using selector: {sel}")
-            break
-
-    if not listings:
-        debug_print("No listings found with any selector!")
-        return []
-
-    # Show first 2 blocks for debugging
-    for i, block in enumerate(listings[:2]):
-        debug_print(f"---- RAW BLOCK {i} ----")
-        debug_print(block.get_text(" ", strip=True))
-
+def fetch_live_football():
+    url = "https://www.live-footballontv.com/tv-guide-uk/"
     events = []
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        print("Live Football on TV fetch failed")
+        return events
 
-    # Now parse each listing
-    for item in listings:
-        date_el = item.select_one("div.listings-date")
-        time_el = item.select_one("time")
-        title_el = item.select_one("h3.title")
-        channel_el = item.select_one("div.channel")
-        sport_el = item.select_one("div.category")
-
-        # Debug prints
-        debug_print(f"Item text: {item.get_text(' ', strip=True)[:120]}...")
-
-        if not time_el or not title_el or not channel_el:
-            debug_print("Skipping item — missing time/title/channel")
+    soup = BeautifulSoup(r.text, "html.parser")
+    rows = soup.select("table.tvguide tr")
+    for row in rows:
+        cols = row.select("td")
+        if len(cols) < 3:
             continue
-
-        time_text = time_el.get_text(strip=True)
-        title_text = title_el.get_text(strip=True)
-        channel_text = channel_el.get_text(strip=True)
-        sport_text = sport_el.get_text(strip=True) if sport_el else "Sport"
-        date_text = (
-            date_el.get_text(strip=True)
-            if date_el else today
-        )
-
-        # Channel filter debugging
-        debug_print(f"Detected channel: {channel_text}")
-        if not any(key.lower() in channel_text.lower() for key in ALLOWED_CHANNEL_KEYWORDS):
-            debug_print("→ Rejected (channel not allowed)")
+        channel = cols[0].get_text(strip=True)
+        time = cols[1].get_text(strip=True)
+        title = cols[2].get_text(strip=True)
+        if not any(c.lower() in channel.lower() for c in ALLOWED_CHANNELS):
             continue
-
         events.append({
-            "date": date_text,
-            "sport": sport_text,
-            "title": title_text,
-            "time": time_text,
-            "channel": channel_text,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "sport": "Football",
+            "title": title,
+            "time": time,
+            "channel": channel
         })
-
-        debug_print(f"→ ADDED EVENT: {title_text}")
-
     return events
 
+def fetch_radiotimes():
+    url = "https://www.radiotimes.com/tv/tv-guide/"
+    events = []
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        print("RadioTimes fetch failed")
+        return events
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    listings = soup.select("li.listing-item")
+    for li in listings:
+        time_el = li.select_one("time")
+        title_el = li.select_one(".listing-title")
+        channel_el = li.select_one(".listing-channel")
+        category_el = li.select_one(".listing-category")
+        if not (time_el and title_el and channel_el):
+            continue
+        channel = channel_el.get_text(strip=True)
+        if not any(c.lower() in channel.lower() for c in ALLOWED_CHANNELS):
+            continue
+        events.append({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "sport": category_el.get_text(strip=True) if category_el else "Sport",
+            "title": title_el.get_text(strip=True),
+            "time": time_el.get_text(strip=True),
+            "channel": channel
+        })
+    return events
+
+def fetch_sportstream():
+    url = "https://www.sportstream.co.uk/tv-schedule/"
+    events = []
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        print("SportStream fetch failed")
+        return events
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    rows = soup.select("div.schedule-item")
+    for row in rows:
+        title_el = row.select_one(".event-title")
+        time_el = row.select_one(".event-time")
+        channel_el = row.select_one(".event-channel")
+        sport_el = row.select_one(".event-category")
+        if not (title_el and time_el and channel_el):
+            continue
+        channel = channel_el.get_text(strip=True)
+        if not any(c.lower() in channel.lower() for c in ALLOWED_CHANNELS):
+            continue
+        events.append({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "sport": sport_el.get_text(strip=True) if sport_el else "Sport",
+            "title": title_el.get_text(strip=True),
+            "time": time_el.get_text(strip=True),
+            "channel": channel
+        })
+    return events
+
+def fetch_bbc_sport():
+    url = "https://www.bbc.co.uk/sport/tv-radio-guide"
+    events = []
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        print("BBC Sport fetch failed")
+        return events
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    rows = soup.select(".programme-item")
+    for row in rows:
+        time_el = row.select_one(".time")
+        title_el = row.select_one(".title")
+        channel_el = row.select_one(".channel")
+        sport_el = row.select_one(".category")
+        if not (time_el and title_el and channel_el):
+            continue
+        channel = channel_el.get_text(strip=True)
+        if not any(c.lower() in channel.lower() for c in ALLOWED_CHANNELS):
+            continue
+        events.append({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "sport": sport_el.get_text(strip=True) if sport_el else "Sport",
+            "title": title_el.get_text(strip=True),
+            "time": time_el.get_text(strip=True),
+            "channel": channel
+        })
+    return events
 
 def main():
-    events = fetch_events()
+    all_events = []
+    all_events.extend(fetch_live_football())
+    all_events.extend(fetch_radiotimes())
+    all_events.extend(fetch_sportstream())
+    all_events.extend(fetch_bbc_sport())
+
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(events, f, indent=4, ensure_ascii=False)
+        json.dump(all_events, f, indent=4, ensure_ascii=False)
 
-    print(f"Saved {len(events)} events to {OUTPUT_FILE}")
-
+    print(f"Saved {len(all_events)} events to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
