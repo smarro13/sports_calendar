@@ -5,220 +5,199 @@ import json
 import re
 
 OUTPUT_FILE = "docs/uk_tv_sports_today.json"
-ALLOWED_CHANNELS = ["Sky Sports", "TNT Sports", "BBC", "ITV"]
+ALLOWED_CHANNELS = ["BBC", "ITV"]  # Only desired channels
+SPORT_KEYWORDS = [
+    "football","rugby","cricket","tennis","golf","boxing",
+    "basketball","hockey","motorsport","formula","f1","mma"
+]
 
-# -----------------------------
-# 1. Live Football on TV
-# -----------------------------
-def fetch_live_football():
-    url = "https://www.live-footballontv.com/"
+def today_str():
+    """Return today's date in YYYY-MM-DD format."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+# ----------------------- TV24 -----------------------
+def fetch_tv24():
+    url = "https://tv24.co.uk/sports"
     events = []
 
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         r = requests.get(url, headers=headers, timeout=10)
         r.raise_for_status()
-        print(f"[INFO] Live Football on TV: Successfully fetched {url}")
-    except requests.RequestException as e:
-        print("[WARNING] Live Football on TV skipped:", e)
+        print(f"[INFO] TV24 fetched successfully")
+    except Exception as e:
+        print(f"[WARNING] TV24 fetch failed: {e}")
         return events
 
     soup = BeautifulSoup(r.text, "html.parser")
-    page_text = soup.get_text()
-    lines = [line.strip() for line in page_text.split("\n") if line.strip()]
+    listings = soup.find_all("div", class_="listing")
 
-    # Dynamically find today's date on the page
-    today = datetime.now()
-    try:
-        today_str = today.strftime("%A %-d %B")  # Linux/Mac
-    except ValueError:
-        today_str = today.strftime("%A %#d %B")  # Windows
+    for li in listings:
+        date_attr = li.get("data-date")
+        if date_attr != today_str():
+            continue
 
-    today_found = False
-    for i, line in enumerate(lines):
-        if today_str in line:
-            today_found = True
-            print(f"[DEBUG] Found today's section: {line}")
-            for j in range(i+1, min(i+20, len(lines))):
-                match_line = lines[j]
-                if re.match(r'^\d{1,2}:\d{2}\s+.+ v .+', match_line):
-                    time_match = re.search(r'^(\d{1,2}:\d{2})\s+(.+)', match_line)
-                    if time_match:
-                        time_str = time_match.group(1)
-                        rest = time_match.group(2)
-                        found_channel = None
-                        for channel_name in ALLOWED_CHANNELS:
-                            if channel_name.lower() in rest.lower():
-                                found_channel = channel_name
-                                idx = rest.lower().find(channel_name.lower())
-                                rest = rest[:idx].strip()
-                                break
-                        if found_channel and " v " in rest:
-                            events.append({
-                                "date": today.strftime("%Y-%m-%d"),
-                                "sport": "Football",
-                                "title": rest,
-                                "time": time_str,
-                                "channel": found_channel
-                            })
-                            print(f"[DEBUG] Added: {time_str} - {rest} on {found_channel}")
-            break
+        time_tag = li.find("span", class_="time")
+        time_str = time_tag.text.strip() if time_tag else "TBD"
 
-    if not today_found:
-        print("[DEBUG] Today's section not found; attempting fallback search...")
-        for line in lines:
-            if re.search(r'\d{1,2}:\d{2}', line) and ' v ' in line:
-                found_channel = None
-                for channel_name in ALLOWED_CHANNELS:
-                    if channel_name.lower() in line.lower():
-                        found_channel = channel_name
-                        break
-                if found_channel:
-                    time_match = re.search(r'(\d{1,2}:\d{2})', line)
-                    if time_match:
-                        time_str = time_match.group(1)
-                        title = line.replace(time_str, "").strip()
-                        idx = title.lower().find(found_channel.lower())
-                        if idx != -1:
-                            title = title[:idx].strip()
-                        events.append({
-                            "date": today.strftime("%Y-%m-%d"),
-                            "sport": "Football",
-                            "title": title,
-                            "time": time_str,
-                            "channel": found_channel
-                        })
-                        print(f"[DEBUG] Fallback added: {time_str} - {title} on {found_channel}")
+        title_tag = li.find("span", class_="event")
+        title = title_tag.text.strip() if title_tag else "Unknown"
 
-    print(f"[DEBUG] Total football matches found: {len(events)}")
+        channel_tag = li.find("span", class_="channel")
+        channel = channel_tag.text.strip() if channel_tag else "Unknown"
+
+        if channel not in ALLOWED_CHANNELS:
+            continue
+
+        sport = "Other"
+        for keyword in SPORT_KEYWORDS:
+            if keyword in title.lower():
+                sport = keyword.capitalize()
+                break
+
+        events.append({
+            "date": today_str(),
+            "time": time_str,
+            "title": title,
+            "sport": sport,
+            "channel": channel
+        })
+        print(f"[DEBUG] TV24: Added {time_str} - {title} ({sport}) on {channel}")
+
     return events
 
-# -----------------------------
-# 2. RadioTimes
-# -----------------------------
+# ----------------------- BBC Sport -----------------------
+def fetch_bbc():
+    url = "https://www.bbc.co.uk/sport"
+    events = []
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        print("[INFO] BBC Sport fetched successfully")
+    except Exception as e:
+        print(f"[WARNING] BBC Sport fetch failed: {e}")
+        return events
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    lines = [line.strip() for line in soup.get_text().split("\n") if line.strip()]
+
+    for line in lines:
+        if re.search(r'\d{1,2}:\d{2}', line) and any(s in line.lower() for s in SPORT_KEYWORDS):
+            if any(bbc_channel.lower() in line.lower() for bbc_channel in ["bbc one", "bbc two", "bbc three", "bbc four"]):
+                time_match = re.search(r'(\d{1,2}:\d{2})', line)
+                if time_match:
+                    time_str = time_match.group(1)
+                    title = re.sub(r'\d{1,2}:\d{2}', '', line).strip()
+                    title = re.sub(r'(bbc one|bbc two|bbc three|bbc four)', '', title, flags=re.IGNORECASE).strip()
+
+                    sport = "Other"
+                    for keyword in SPORT_KEYWORDS:
+                        if keyword in title.lower():
+                            sport = keyword.capitalize()
+                            break
+
+                    events.append({
+                        "date": today_str(),
+                        "time": time_str,
+                        "title": title,
+                        "sport": sport,
+                        "channel": "BBC"
+                    })
+                    print(f"[DEBUG] BBC: Added {time_str} - {title} ({sport})")
+
+    return events
+
+# ----------------------- RadioTimes -----------------------
 def fetch_radiotimes():
     urls_to_try = [
         "https://www.radiotimes.com/tv/sport/",
-        "https://www.radiotimes.com/tv/",
-        "https://www.radiotimes.com/tv-guide/"
+        "https://www.radiotimes.com/tv/"
     ]
     events = []
-    today = datetime.now().strftime("%Y-%m-%d")
+
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     for url in urls_to_try:
         try:
-            headers = {"User-Agent": "Mozilla/5.0"}
             r = requests.get(url, headers=headers, timeout=10)
             r.raise_for_status()
-            print(f"[INFO] RadioTimes: Successfully fetched {url}")
-
-            soup = BeautifulSoup(r.text, "html.parser")
-            programme_items = soup.find_all(['div','li','article'], class_=re.compile(r'(programme|listing|guide|show)', re.I))
-
-            for item in programme_items[:20]:
-                text = item.get_text(strip=True)
-                if len(text) > 500:
-                    continue
-                if (any(word in text.lower() for word in ['football','sport','match','live']) and
-                    re.search(r'\d{1,2}[:.:]\d{2}', text) and
-                    any(chan.lower() in text.lower() for chan in ALLOWED_CHANNELS)):
-                    time_match = re.search(r'(\d{1,2}[:.:]\d{2})', text)
-                    if time_match:
-                        time_str = time_match.group(1).replace('.', ':')
-                        found_channel = next((c for c in ALLOWED_CHANNELS if c.lower() in text.lower()), None)
-                        title = text.replace(time_str, "").strip()
-                        if found_channel:
-                            title = re.sub(found_channel, "", title, flags=re.IGNORECASE).strip()
-                            if len(title) > 5:
-                                events.append({
-                                    "date": today,
-                                    "sport": "Sport",
-                                    "title": title,
-                                    "time": time_str,
-                                    "channel": found_channel
-                                })
-                                print(f"[DEBUG] RadioTimes added: {time_str} - {title} on {found_channel}")
-            if events:
-                break
+            print(f"[INFO] RadioTimes fetched successfully: {url}")
         except Exception as e:
-            print(f"[WARNING] RadioTimes URL {url} failed: {e}")
+            print(f"[WARNING] RadioTimes fetch failed ({url}): {e}")
             continue
-    print(f"[DEBUG] Total events from RadioTimes: {len(events)}")
-    return events
 
-# -----------------------------
-# 3. BBC Sport
-# -----------------------------
-def fetch_bbc_sport():
-    url = "https://www.bbc.co.uk/sport"
-    events = []
-    today = datetime.now().strftime("%Y-%m-%d")
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        print(f"[INFO] BBC Sport: Successfully fetched {url}")
-    except requests.RequestException as e:
-        print("[WARNING] BBC Sport skipped:", e)
-        return events
+        soup = BeautifulSoup(r.text, "html.parser")
+        programme_items = soup.find_all(['div','li','article'], class_=re.compile(r'(programme|listing|guide|show)', re.I))
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    page_text = soup.get_text()
-    lines = [line.strip() for line in page_text.split("\n") if line.strip()]
+        for item in programme_items:
+            text = item.get_text(" ", strip=True)
+            if len(text) > 500:
+                continue
 
-    for line in lines:
-        if (re.search(r'\d{1,2}:\d{2}', line) and 
-            any(word in line.lower() for word in ['football','sport','rugby','cricket']) and
-            len(line) < 200):
-            time_match = re.search(r'(\d{1,2}:\d{2})', line)
-            if time_match:
+            # Check for sport keywords and allowed channels
+            if any(s in text.lower() for s in SPORT_KEYWORDS) and any(ch.lower() in text.lower() for ch in ALLOWED_CHANNELS):
+                time_match = re.search(r'(\d{1,2}:\d{2})', text)
+                if not time_match:
+                    continue
                 time_str = time_match.group(1)
-                title = line.replace(time_str, "").strip()
-                events.append({
-                    "date": today,
-                    "sport": "Sport",
-                    "title": title,
-                    "time": time_str,
-                    "channel": "BBC"
-                })
-                print(f"[DEBUG] BBC added: {time_str} - {title}")
-    print(f"[DEBUG] Total events from BBC: {len(events)}")
+
+                channel_found = None
+                for ch in ALLOWED_CHANNELS:
+                    if ch.lower() in text.lower():
+                        channel_found = ch
+                        break
+                if not channel_found:
+                    continue
+
+                title = re.sub(r'(\d{1,2}:\d{2})', '', text).strip()
+                title = re.sub(r'(' + '|'.join(ALLOWED_CHANNELS) + ')', '', title, flags=re.IGNORECASE).strip()
+                title = re.sub(r'(watch|live|tonight|today|programme|show)', '', title, flags=re.IGNORECASE).strip()
+
+                if title and len(title) < 100:
+                    sport = "Other"
+                    for keyword in SPORT_KEYWORDS:
+                        if keyword in title.lower():
+                            sport = keyword.capitalize()
+                            break
+
+                    events.append({
+                        "date": today_str(),
+                        "time": time_str,
+                        "title": title,
+                        "sport": sport,
+                        "channel": channel_found
+                    })
+                    print(f"[DEBUG] RadioTimes: Added {time_str} - {title} ({sport}) on {channel_found}")
+
+        if events:
+            break
+
     return events
 
-# -----------------------------
-# Main function
-# -----------------------------
+# ----------------------- MAIN -----------------------
 def main():
-    print("Starting to fetch UK TV sports listings...")
     all_events = []
 
-    print("\n1. Fetching Live Football on TV...")
-    all_events.extend(fetch_live_football())
+    print("[INFO] Fetching TV24 events...")
+    all_events.extend(fetch_tv24())
 
-    print("\n2. Fetching RadioTimes...")
+    print("[INFO] Fetching BBC events...")
+    all_events.extend(fetch_bbc())
+
+    print("[INFO] Fetching RadioTimes events...")
     all_events.extend(fetch_radiotimes())
 
-    print("\n3. Fetching BBC Sport...")
-    all_events.extend(fetch_bbc_sport())
-
-    # Fallback sample data if no live events found
     if not all_events:
-        print("[INFO] No live events found. Adding sample events...")
-        today = datetime.now().strftime("%Y-%m-%d")
-        all_events.extend([
-            {"date": today, "sport": "Football", "title": "Sample Match 1", "time": "19:30", "channel": "Sky Sports"},
-            {"date": today, "sport": "Football", "title": "Sample Match 2", "time": "20:00", "channel": "BBC"},
-        ])
+        print("[WARNING] No events found. JSON will be empty.")
 
-    # Save to JSON
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(all_events, f, indent=4, ensure_ascii=False)
 
-    print(f"\nCompleted! Saved {len(all_events)} events to {OUTPUT_FILE}")
-    if all_events:
-        print("\nPreview of saved events:")
-        for ev in all_events[:5]:
-            print(f" {ev['time']} - {ev['title']} on {ev['channel']}")
+    print(f"[INFO] Saved {len(all_events)} events to {OUTPUT_FILE}")
+    for ev in all_events[:5]:
+        print(f"{ev['time']} - {ev['title']} ({ev['sport']}) on {ev['channel']}")
 
 if __name__ == "__main__":
     main()
